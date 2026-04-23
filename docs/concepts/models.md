@@ -58,7 +58,7 @@ subscription** (OAuth) and **Anthropic** (API key or Claude CLI).
 - `agents.defaults.pdfModel.primary` and `agents.defaults.pdfModel.fallbacks`
 - `agents.defaults.imageGenerationModel.primary` and `agents.defaults.imageGenerationModel.fallbacks`
 - `agents.defaults.videoGenerationModel.primary` and `agents.defaults.videoGenerationModel.fallbacks`
-- `agents.defaults.models` (allowlist + aliases + provider params)
+- `agents.defaults.models` (allowlist + aliases + optional runtime model refs + provider params)
 - `models.providers` (custom providers written into `models.json`)
 
 Model refs are normalized to lowercase. Provider aliases like `z.ai/*` normalize
@@ -84,6 +84,28 @@ provided value should become the complete target value.
 Interactive provider setup and `openclaw configure --section model` also merge
 provider-scoped selections into the existing allowlist, so adding Codex,
 Ollama, or another provider does not drop unrelated model entries.
+
+### Visible model, different runtime model
+
+An allowlist entry can set `runtimeModel` when the model shown in `/model` and
+`openclaw models list` should differ from the provider/model used for execution.
+The allowlist key remains the user-visible model ref; `runtimeModel` is resolved
+only when the agent run starts.
+
+```json5
+{
+  agents: {
+    defaults: {
+      models: {
+        "openai-codex/gpt-oss:20b": {
+          alias: "codex-local-oss",
+          runtimeModel: "codex-5080-gptoss/gpt-oss:20b",
+        },
+      },
+    },
+  },
+}
+```
 
 ## "Model is not allowed" (and why replies stop)
 

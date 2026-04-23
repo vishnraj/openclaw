@@ -449,6 +449,56 @@ export function resolveConfiguredModelRef(params: {
   return { provider: params.defaultProvider, model: params.defaultModel };
 }
 
+export type RuntimeModelSelection = ModelRef & {
+  authProfileId?: string;
+};
+
+export function resolveRuntimeModelSelection(params: {
+  cfg: OpenClawConfig | undefined;
+  provider: string;
+  model: string;
+  defaultProvider?: string;
+  allowPluginNormalization?: boolean;
+}): RuntimeModelSelection {
+  const selected = normalizeModelRef(params.provider, params.model, {
+    allowPluginNormalization: params.allowPluginNormalization,
+  });
+  const selectedKey = modelKey(selected.provider, selected.model);
+  const configuredModels = params.cfg?.agents?.defaults?.models ?? {};
+  const defaultProvider = params.defaultProvider ?? selected.provider;
+
+  for (const [rawKey, entry] of Object.entries(configuredModels)) {
+    const key = resolveAllowlistModelKey({
+      cfg: params.cfg,
+      raw: rawKey,
+      defaultProvider,
+    });
+    if (key !== selectedKey) {
+      continue;
+    }
+    const runtimeModel = entry?.runtimeModel?.trim();
+    if (!runtimeModel) {
+      return selected;
+    }
+    const split = splitTrailingAuthProfile(runtimeModel);
+    const resolved = resolveModelRefFromString({
+      cfg: params.cfg,
+      raw: split.model,
+      defaultProvider: selected.provider,
+      allowPluginNormalization: params.allowPluginNormalization,
+    });
+    if (!resolved) {
+      return selected;
+    }
+    return {
+      ...resolved.ref,
+      ...(split.profile ? { authProfileId: split.profile } : {}),
+    };
+  }
+
+  return selected;
+}
+
 export function buildAllowedModelSetWithFallbacks(params: {
   cfg: OpenClawConfig;
   catalog: ModelCatalogEntry[];

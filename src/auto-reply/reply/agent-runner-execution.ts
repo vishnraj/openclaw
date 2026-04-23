@@ -13,7 +13,7 @@ import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionBinding } from "../../agents/cli-session.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { runWithModelFallback, isFallbackSummaryError } from "../../agents/model-fallback.js";
-import { isCliProvider } from "../../agents/model-selection.js";
+import { isCliProvider, resolveRuntimeModelSelection } from "../../agents/model-selection.js";
 import {
   BILLING_ERROR_USER_MESSAGE,
   isCompactionFailureError,
@@ -878,7 +878,15 @@ export async function runAgentTurnWithFallback(params: {
             );
           }
 
-          if (isCliProvider(provider, runtimeConfig)) {
+          const runtimeSelection = resolveRuntimeModelSelection({
+            cfg: runtimeConfig,
+            provider,
+            model,
+          });
+          const runtimeProvider = runtimeSelection.provider;
+          const runtimeModel = runtimeSelection.model;
+
+          if (isCliProvider(runtimeProvider, runtimeConfig)) {
             const startedAt = Date.now();
             notifyAgentRunStart();
             emitAgentEvent({
@@ -891,12 +899,13 @@ export async function runAgentTurnWithFallback(params: {
             });
             const cliSessionBinding = getCliSessionBinding(
               params.getActiveSessionEntry(),
-              provider,
+              runtimeProvider,
             );
             const authProfileId =
-              provider === params.followupRun.run.provider
+              runtimeSelection.authProfileId ??
+              (runtimeProvider === params.followupRun.run.provider
                 ? params.followupRun.run.authProfileId
-                : undefined;
+                : undefined);
             const hookMessageProvider = resolveOriginMessageProvider({
               originatingChannel: params.followupRun.originatingChannel,
               provider: params.sessionCtx.Provider,
@@ -913,8 +922,8 @@ export async function runAgentTurnWithFallback(params: {
                   workspaceDir: params.followupRun.run.workspaceDir,
                   config: runtimeConfig,
                   prompt: params.commandBody,
-                  provider,
-                  model,
+                  provider: runtimeProvider,
+                  model: runtimeModel,
                   thinkLevel: params.followupRun.run.thinkLevel,
                   timeoutMs: params.followupRun.run.timeoutMs,
                   runId,
@@ -1012,10 +1021,10 @@ export async function runAgentTurnWithFallback(params: {
               run: effectiveRun,
               sessionCtx: params.sessionCtx,
               hasRepliedRef: params.opts?.hasRepliedRef,
-              provider,
+              provider: runtimeProvider,
               runId,
               allowTransientCooldownProbe: runOptions?.allowTransientCooldownProbe,
-              model,
+              model: runtimeModel,
             },
           );
           return (async () => {
@@ -1032,6 +1041,12 @@ export async function runAgentTurnWithFallback(params: {
                 groupSpace: normalizeOptionalString(params.sessionCtx.GroupSpace),
                 ...senderContext,
                 ...runBaseParams,
+                ...(runtimeSelection.authProfileId
+                  ? {
+                      authProfileId: runtimeSelection.authProfileId,
+                      authProfileIdSource: "user" as const,
+                    }
+                  : {}),
                 sandboxSessionKey: params.runtimePolicySessionKey,
                 prompt: params.commandBody,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,

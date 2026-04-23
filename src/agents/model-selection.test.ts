@@ -16,6 +16,7 @@ import {
   resolvePersistedOverrideModelRef,
   resolvePersistedModelRef,
   resolvePersistedSelectedModelRef,
+  resolveRuntimeModelSelection,
   resolveAllowedModelRef,
   resolveConfiguredModelRef,
   resolveSubagentConfiguredModelSelection,
@@ -142,6 +143,71 @@ describe("model-selection", () => {
       expect(normalizeProviderId("bedrock")).toBe("amazon-bedrock");
       expect(normalizeProviderId("aws-bedrock")).toBe("amazon-bedrock");
       expect(normalizeProviderId("amazon-bedrock")).toBe("amazon-bedrock");
+    });
+  });
+
+  describe("resolveRuntimeModelSelection", () => {
+    it("keeps the visible model when no runtimeModel is configured", () => {
+      expect(
+        resolveRuntimeModelSelection({
+          cfg: {
+            agents: {
+              defaults: {
+                models: {
+                  "openai-codex/gpt-5.4": { alias: "codex" },
+                },
+              },
+            },
+          } as OpenClawConfig,
+          provider: "openai-codex",
+          model: "gpt-5.4",
+        }),
+      ).toEqual({ provider: "openai-codex", model: "gpt-5.4" });
+    });
+
+    it("maps a visible model entry to its configured runtime model", () => {
+      expect(
+        resolveRuntimeModelSelection({
+          cfg: {
+            agents: {
+              defaults: {
+                models: {
+                  "openai-codex/gpt-oss:20b": {
+                    alias: "codex-local-oss",
+                    runtimeModel: "codex-5080-gptoss/gpt-oss:20b",
+                  },
+                },
+              },
+            },
+          } as OpenClawConfig,
+          provider: "openai-codex",
+          model: "gpt-oss:20b",
+        }),
+      ).toEqual({ provider: "codex-5080-gptoss", model: "gpt-oss:20b" });
+    });
+
+    it("preserves an auth profile suffix on runtimeModel", () => {
+      expect(
+        resolveRuntimeModelSelection({
+          cfg: {
+            agents: {
+              defaults: {
+                models: {
+                  "openai-codex/gemma4:31b": {
+                    runtimeModel: "codex-5080-gemma/gemma4:31b@gemma_5080",
+                  },
+                },
+              },
+            },
+          } as OpenClawConfig,
+          provider: "openai-codex",
+          model: "gemma4:31b",
+        }),
+      ).toEqual({
+        provider: "codex-5080-gemma",
+        model: "gemma4:31b",
+        authProfileId: "gemma_5080",
+      });
     });
   });
 
@@ -599,6 +665,36 @@ describe("model-selection", () => {
           id: "claude-sonnet-4-6",
           name: "Claude Sonnet 4.5",
           alias: "sonnet",
+        },
+      ]);
+    });
+
+    it("keeps runtimeModel out of the visible allowlist catalog", () => {
+      const result = buildAllowedModelSet({
+        cfg: {
+          agents: {
+            defaults: {
+              models: {
+                "openai-codex/gpt-oss:20b": {
+                  alias: "codex-local-oss",
+                  runtimeModel: "codex-5080-gptoss/gpt-oss:20b",
+                },
+              },
+            },
+          },
+        } as OpenClawConfig,
+        catalog: [],
+        defaultProvider: "openai-codex",
+      });
+
+      expect(result.allowAny).toBe(false);
+      expect([...result.allowedKeys]).toEqual(["openai-codex/gpt-oss:20b"]);
+      expect(result.allowedCatalog).toEqual([
+        {
+          provider: "openai-codex",
+          id: "gpt-oss:20b",
+          name: "gpt-oss:20b",
+          alias: "codex-local-oss",
         },
       ]);
     });

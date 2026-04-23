@@ -3228,6 +3228,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     alias: {
                       type: "string",
                     },
+                    runtimeModel: {
+                      type: "string",
+                    },
                     params: {
                       type: "object",
                       propertyNames: {

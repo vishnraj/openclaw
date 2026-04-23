@@ -37,11 +37,13 @@ import {
   resolveConfiguredOpenRouterCompatAlias,
   resolveHooksGmailModel,
   resolveModelRefFromString,
+  resolveRuntimeModelSelection,
   type ModelAliasIndex,
   type ModelRefStatus,
+  type RuntimeModelSelection,
 } from "./model-selection-shared.js";
 
-export type { ModelAliasIndex, ModelRef, ModelRefStatus };
+export type { ModelAliasIndex, ModelRef, ModelRefStatus, RuntimeModelSelection };
 
 export type ThinkLevel =
   | "off"
@@ -70,6 +72,7 @@ export {
   resolveConfiguredModelRef,
   resolveHooksGmailModel,
   resolveModelRefFromString,
+  resolveRuntimeModelSelection,
 };
 export { isCliProvider } from "./model-selection-cli.js";
 

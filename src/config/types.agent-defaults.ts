@@ -30,6 +30,8 @@ export type PromptOverlaysConfig = {
 
 export type AgentModelEntryConfig = {
   alias?: string;
+  /** Runtime provider/model used for execution while keeping this entry visible in model pickers. */
+  runtimeModel?: string;
   /** Provider-specific API parameters (e.g., GLM-4.7 thinking mode). */
   params?: Record<string, unknown>;
   /** Enable streaming for this model (default: true, false for Ollama to avoid SDK issue #1205). */
