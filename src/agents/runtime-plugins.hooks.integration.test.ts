@@ -3,6 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import {
+  getGlobalHookRunner,
+  getGlobalPluginRegistry,
+  resetGlobalHookRunner,
+} from "../plugins/hook-runner-global.js";
 import { createHookRunner } from "../plugins/hooks.js";
 import {
   cleanupPluginLoaderFixturesForTest,
@@ -17,12 +22,14 @@ import { loadPluginMetadataSnapshot } from "../plugins/plugin-metadata-snapshot.
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
+import { runBeforeToolCallHook } from "./agent-tools.before-tool-call.policy.js";
 import {
   loadAgentRuntimePluginRegistryHandle,
   withAgentPluginRegistry,
 } from "./runtime-plugins.js";
 
 afterEach(resetPluginLoaderTestStateForTest);
+afterEach(resetGlobalHookRunner);
 afterAll(cleanupPluginLoaderFixturesForTest);
 
 it("keeps a prepared registry alive after its temporary caller cache retires", async () => {
@@ -134,4 +141,52 @@ it.each([
   } else {
     await withAgentPluginRegistry({ config, workspaceDir, run });
   }
+});
+
+// Regression for upstream #159333, extended to the model-selection hook used by routers.
+it("dispatches headless model and tool hooks without claiming a process registry", async () => {
+  useNoBundledPlugins();
+  resetGlobalHookRunner();
+  const pluginId = "headless-hook-guard";
+  const plugin = writePlugin({
+    id: pluginId,
+    body: `module.exports = {
+  id: ${JSON.stringify(pluginId)},
+  register(api) {
+    api.on("before_model_resolve", async () => ({ providerOverride: "local", modelOverride: "test-model" }));
+    api.on("before_tool_call", async (event) => ({ block: true, blockReason: "guarded " + event.toolName }));
+  },
+};\n`,
+  });
+  const config = {
+    plugins: {
+      allow: [pluginId],
+      load: { paths: [plugin.file] },
+      entries: { [pluginId]: { enabled: true, hooks: { allowConversationAccess: true } } },
+      slots: { memory: "none" },
+    },
+  } satisfies OpenClawConfig;
+  const workspaceDir = makePluginLoaderTempDir();
+  expect(getGlobalHookRunner()).toBeNull();
+  await withAgentPluginRegistry({
+    config,
+    workspaceDir,
+    run: async () => {
+      const runner = getGlobalHookRunner();
+      expect(runner).not.toBeNull();
+      await expect(runner?.runBeforeModelResolve({ prompt: "bounded task" }, {})).resolves.toEqual({
+        providerOverride: "local",
+        modelOverride: "test-model",
+      });
+      const outcome = await runBeforeToolCallHook({
+        toolName: "exec",
+        params: { command: "ls -a" },
+      });
+      expect(outcome.blocked).toBe(true);
+      expect(outcome.blocked && outcome.reason).toContain("guarded exec");
+      expect(getGlobalPluginRegistry()).toBeNull();
+    },
+  });
+  expect(getGlobalPluginRegistry()).toBeNull();
+  expect(getGlobalHookRunner()?.hasHooks("before_model_resolve")).toBe(false);
 });
